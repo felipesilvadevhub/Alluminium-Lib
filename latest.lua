@@ -8,7 +8,7 @@
     NOVIDADES DESTA VERSÃO:
         - Anti-duplicação real: se o script for re-executado (loadstring
           de novo), a instância anterior é destruída automaticamente
-          (GUIs, conexões de input, partículas) antes de criar a nova.
+          (GUIs, conexões de input e partículas) antes de criar a nova.
         - Partículas brancas também na janela principal (não só no loading).
         - Botão de Unload na TopBar (ao lado do botão de fechar), que
           chama Library:Unload() diretamente.
@@ -49,6 +49,7 @@ print("v1.0.6")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -420,7 +421,7 @@ function Library:CreateWindow(config)
 		row.ZIndex = 30
 		row.Parent = HotkeyListGui
 		corner(row, 6)
-		stroke(row, theme.Stroke, 1)
+		local rowStroke = stroke(row, theme.Stroke, 1)
 
 		local pad = Instance.new("UIPadding")
 		pad.PaddingLeft = UDim.new(0, 10)
@@ -474,11 +475,79 @@ function Library:CreateWindow(config)
 
 		local entry = {}
 
+		-- Loop de cor RGB usado enquanto a keybind estiver "ativa"
+		-- (segurando em Hold, ligada em Toggle, ou sempre em Always).
+		local rgbActive = false
+		local rgbConn = nil
+		local rgbHue = 0
+
+		function entry:SetActive(state)
+			rgbActive = state
+			if state then
+				if not rgbConn then
+					rgbHue = 0
+					rgbConn = track(RunService.Heartbeat:Connect(function(dt)
+						rgbHue = (rgbHue + dt * 0.65) % 1
+						local c = Color3.fromHSV(rgbHue, 0.85, 1)
+						rowStroke.Color = c
+						keyLabel.TextColor3 = c
+					end))
+				end
+				tween(rowStroke, {Thickness = 1.5}, 0.15)
+			else
+				if rgbConn then
+					rgbConn:Disconnect()
+					rgbConn = nil
+				end
+				tween(rowStroke, {Color = theme.Stroke, Thickness = 1}, 0.2)
+				tween(keyLabel, {TextColor3 = theme.TextPrimary}, 0.2)
+			end
+		end
+
+		-- Pisca rapidamente em arco-íris uma vez, usado para ações
+		-- "de um clique só" (CreateKeybind) quando a tecla é apertada.
+		function entry:Pulse()
+			if rgbActive then return end
+			task.spawn(function()
+				local t0 = tick()
+				local pulseDuration = 0.45
+				while tick() - t0 < pulseDuration and not rgbActive do
+					local hu = ((tick() - t0) / pulseDuration) % 1
+					local c = Color3.fromHSV(hu, 0.85, 1)
+					rowStroke.Color = c
+					keyLabel.TextColor3 = c
+					task.wait()
+				end
+				if not rgbActive then
+					tween(rowStroke, {Color = theme.Stroke}, 0.25)
+					tween(keyLabel, {TextColor3 = theme.TextPrimary}, 0.25)
+				end
+			end)
+		end
+
+		-- Esmaece a entrada quando o componente correspondente está
+		-- desativado (modo "Disabled").
+		function entry:SetDisabled(state)
+			if state then
+				tween(nameLabel, {TextColor3 = theme.Stroke}, 0.2)
+				tween(keyLabel, {TextColor3 = theme.Stroke}, 0.2)
+				tween(modeLabel, {TextColor3 = theme.Stroke}, 0.2)
+				tween(row, {BackgroundColor3 = theme.Background}, 0.2)
+			else
+				tween(nameLabel, {TextColor3 = theme.TextSecondary}, 0.2)
+				tween(keyLabel, {TextColor3 = theme.TextPrimary}, 0.2)
+				tween(modeLabel, {TextColor3 = theme.TextSecondary}, 0.2)
+				tween(row, {BackgroundColor3 = theme.Surface}, 0.2)
+			end
+		end
+
 		function entry:SetKey(text)
 			keyLabel.Text = "[" .. text .. "]"
 			tween(keyLabel, {TextColor3 = theme.Accent}, 0.1)
 			task.delay(0.2, function()
-				tween(keyLabel, {TextColor3 = theme.TextPrimary}, 0.3)
+				if not rgbActive then
+					tween(keyLabel, {TextColor3 = theme.TextPrimary}, 0.3)
+				end
 			end)
 		end
 
@@ -487,6 +556,10 @@ function Library:CreateWindow(config)
 		end
 
 		function entry:Destroy()
+			if rgbConn then
+				rgbConn:Disconnect()
+				rgbConn = nil
+			end
 			local slideTo = hotkeyFromRight and 30 or -30
 			local outT = tween(row, {BackgroundTransparency = 1, Position = UDim2.fromOffset(slideTo, 0)}, 0.2)
 			outT.Completed:Connect(function()
@@ -524,7 +597,7 @@ function Library:CreateWindow(config)
 
 	------------------------------------------------------------
 	-- MENU DE CONTEXTO (clique direito) — usado pelo KeybindToggle
-	-- para escolher o modo: Always, Hold, Toggle.
+	-- para escolher o modo: Always, Hold, Toggle, Disabled.
 	------------------------------------------------------------
 	local activeContextMenu = nil
 
@@ -573,8 +646,9 @@ function Library:CreateWindow(config)
 		list.Padding = UDim.new(0, 2)
 		list.Parent = menu
 
-		for _, optName in ipairs({"Always", "Hold", "Toggle"}) do
+		for _, optName in ipairs({"Always", "Hold", "Toggle", "Disabled"}) do
 			local isCurrent = optName == currentMode
+			local isDisabledOpt = optName == "Disabled"
 			local optBtn = Instance.new("TextButton")
 			optBtn.Size = UDim2.new(1, 0, 0, 28)
 			optBtn.BackgroundColor3 = theme.Surface
@@ -582,7 +656,7 @@ function Library:CreateWindow(config)
 			optBtn.AutoButtonColor = false
 			optBtn.Font = isCurrent and Enum.Font.GothamBold or Enum.Font.Gotham
 			optBtn.Text = optName
-			optBtn.TextColor3 = isCurrent and theme.TextPrimary or theme.TextSecondary
+			optBtn.TextColor3 = isCurrent and (isDisabledOpt and Color3.fromRGB(255, 130, 130) or theme.TextPrimary) or theme.TextSecondary
 			optBtn.TextSize = 12
 			optBtn.ZIndex = 41
 			optBtn.Parent = menu
@@ -1191,23 +1265,32 @@ function Library:CreateWindow(config)
 		end)
 
 		track(UserInputService.InputBegan:Connect(function(input, gpe)
-			if not listening then return end
 			if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 
-			listening = false
-			tween(keyBtn, {BackgroundColor3 = theme.SurfaceLight}, 0.15)
-			tween(keyBtn, {TextColor3 = theme.TextSecondary}, 0.15)
+			if listening then
+				listening = false
+				tween(keyBtn, {BackgroundColor3 = theme.SurfaceLight}, 0.15)
+				tween(keyBtn, {TextColor3 = theme.TextSecondary}, 0.15)
 
-			if input.KeyCode == Enum.KeyCode.Escape then
+				if input.KeyCode == Enum.KeyCode.Escape then
+					keyBtn.Text = currentKey.Name
+					return
+				end
+
+				currentKey = input.KeyCode
 				keyBtn.Text = currentKey.Name
+				if hotkeyEntry then hotkeyEntry:SetKey(currentKey.Name) end
+				if callback then
+					callback(currentKey)
+				end
 				return
 			end
 
-			currentKey = input.KeyCode
-			keyBtn.Text = currentKey.Name
-			if hotkeyEntry then hotkeyEntry:SetKey(currentKey.Name) end
-			if callback then
-				callback(currentKey)
+			-- Tecla apertada durante o jogo (fora do modo de re-bind):
+			-- pisca a entrada na hotkey list em arco-íris como feedback.
+			if gpe then return end
+			if input.KeyCode == currentKey and hotkeyEntry then
+				hotkeyEntry:Pulse()
 			end
 		end))
 
@@ -1216,10 +1299,14 @@ function Library:CreateWindow(config)
 
 	-- KEYBIND TOGGLE: combina um switch (toggle) com uma tecla vinculada.
 	-- Clique direito no botão da tecla abre um menu pra escolher o modo:
-	--   Always  -> ignora a tecla, fica sempre ligado
-	--   Hold    -> fica ligado só enquanto a tecla está pressionada
-	--   Toggle  -> cada aperto da tecla alterna ligado/desligado
-	-- (clicar no próprio switch também alterna, exceto em Hold/Always)
+	--   Always   -> ignora a tecla, fica sempre ligado
+	--   Hold     -> fica ligado só enquanto a tecla está pressionada
+	--   Toggle   -> cada aperto da tecla alterna ligado/desligado
+	--   Disabled -> desativa completamente o componente (tecla e clique
+	--               no switch não fazem nada até trocar pra outro modo)
+	-- (clicar no próprio switch também alterna, exceto em Hold/Always/Disabled)
+	-- Enquanto estiver "ligado" (Always, Hold pressionado ou Toggle ativo),
+	-- a entrada correspondente na hotkey list pisca em cor RGB.
 	local function createKeybindToggle(parent, opts)
 		opts = opts or {}
 		local text = opts.Text or "Keybind"
@@ -1315,6 +1402,10 @@ function Library:CreateWindow(config)
 				tween(switchBack, {BackgroundColor3 = theme.Toggle_Off}, 0.18)
 				tween(knob, {Position = UDim2.new(0, 2, 0.5, 0), BackgroundColor3 = Color3.fromRGB(230, 230, 230)}, 0.18)
 			end
+			-- A entrada na hotkey list fica em RGB enquanto o estado estiver ligado
+			if hotkeyEntry and currentMode ~= "Disabled" then
+				hotkeyEntry:SetActive(newState)
+			end
 		end
 
 		local function setState(newState, fire)
@@ -1330,13 +1421,39 @@ function Library:CreateWindow(config)
 			modeTag.Text = string.upper(newMode)
 			if hotkeyEntry then hotkeyEntry:SetMode(newMode) end
 			if modeCallback then task.spawn(modeCallback, newMode) end
+
+			local isDisabled = newMode == "Disabled"
+
 			if newMode == "Always" then
 				setState(true)
+			elseif isDisabled then
+				setState(false)
+				if hotkeyEntry then hotkeyEntry:SetActive(false) end
 			end
+
+			if isDisabled then
+				tween(holder, {BackgroundColor3 = theme.Background}, 0.2)
+				tween(label, {TextColor3 = theme.TextSecondary}, 0.2)
+				tween(modeTag, {BackgroundColor3 = Color3.fromRGB(55, 30, 30)}, 0.2)
+				tween(modeTag, {TextColor3 = Color3.fromRGB(255, 130, 130)}, 0.2)
+				switchClick.Active = false
+				tween(switchBack, {BackgroundTransparency = 0.5}, 0.2)
+				tween(knob, {BackgroundTransparency = 0.5}, 0.2)
+			else
+				tween(holder, {BackgroundColor3 = theme.Surface}, 0.2)
+				tween(label, {TextColor3 = theme.TextPrimary}, 0.2)
+				tween(modeTag, {BackgroundColor3 = theme.SurfaceLight}, 0.2)
+				tween(modeTag, {TextColor3 = theme.TextSecondary}, 0.2)
+				switchClick.Active = true
+				tween(switchBack, {BackgroundTransparency = 0}, 0.2)
+				tween(knob, {BackgroundTransparency = 0}, 0.2)
+			end
+
+			if hotkeyEntry then hotkeyEntry:SetDisabled(isDisabled) end
 		end
 
 		switchClick.MouseButton1Click:Connect(function()
-			if currentMode == "Always" or currentMode == "Hold" then return end
+			if currentMode == "Always" or currentMode == "Hold" or currentMode == "Disabled" then return end
 			setState(not state)
 		end)
 
@@ -1373,7 +1490,7 @@ function Library:CreateWindow(config)
 			end
 
 			if gpe then return end
-			if currentMode == "Always" then return end
+			if currentMode == "Always" or currentMode == "Disabled" then return end
 			if input.KeyCode == currentKey then
 				if currentMode == "Toggle" then
 					setState(not state)
@@ -1536,22 +1653,35 @@ function Library:CreateWindow(config)
 		card.AutomaticSize = Enum.AutomaticSize.Y
 		card.BackgroundColor3 = theme.Surface
 		card.BackgroundTransparency = 1
+		card.ClipsDescendants = true
 		card.Position = UDim2.fromOffset(40, 0)
 		card.Parent = NotifyHolder
 		corner(card, 8)
 		local cStroke = stroke(card, theme.Stroke, 1)
 		cStroke.Transparency = 1
 
+		local outerList = Instance.new("UIListLayout")
+		outerList.Padding = UDim.new(0, 0)
+		outerList.Parent = card
+
+		local ContentWrap = Instance.new("Frame")
+		ContentWrap.Name = "ContentWrap"
+		ContentWrap.Size = UDim2.new(1, 0, 0, 0)
+		ContentWrap.AutomaticSize = Enum.AutomaticSize.Y
+		ContentWrap.BackgroundTransparency = 1
+		ContentWrap.LayoutOrder = 1
+		ContentWrap.Parent = card
+
 		local pad = Instance.new("UIPadding")
 		pad.PaddingTop = UDim.new(0, 10)
 		pad.PaddingBottom = UDim.new(0, 10)
 		pad.PaddingLeft = UDim.new(0, 12)
 		pad.PaddingRight = UDim.new(0, 12)
-		pad.Parent = card
+		pad.Parent = ContentWrap
 
 		local list = Instance.new("UIListLayout")
 		list.Padding = UDim.new(0, 2)
-		list.Parent = card
+		list.Parent = ContentWrap
 
 		if opts.Title then
 			local t = Instance.new("TextLabel")
@@ -1563,7 +1693,7 @@ function Library:CreateWindow(config)
 			t.TextSize = 13
 			t.TextTransparency = 1
 			t.TextXAlignment = Enum.TextXAlignment.Left
-			t.Parent = card
+			t.Parent = ContentWrap
 		end
 
 		if opts.Content then
@@ -1578,21 +1708,48 @@ function Library:CreateWindow(config)
 			c.TextWrapped = true
 			c.TextTransparency = 1
 			c.TextXAlignment = Enum.TextXAlignment.Left
-			c.Parent = card
+			c.Parent = ContentWrap
 		end
+
+		-- Barra de progresso, encostada na borda inferior do card, que
+		-- esvazia da esquerda pra direita conforme a notificação expira.
+		local ProgressBack = Instance.new("Frame")
+		ProgressBack.Name = "ProgressBack"
+		ProgressBack.Size = UDim2.new(1, 0, 0, 3)
+		ProgressBack.BackgroundColor3 = theme.SurfaceLight
+		ProgressBack.BackgroundTransparency = 1
+		ProgressBack.BorderSizePixel = 0
+		ProgressBack.LayoutOrder = 2
+		ProgressBack.Parent = card
+
+		local ProgressFill = Instance.new("Frame")
+		ProgressFill.Name = "ProgressFill"
+		ProgressFill.Size = UDim2.new(1, 0, 1, 0)
+		ProgressFill.BackgroundColor3 = theme.Accent
+		ProgressFill.BorderSizePixel = 0
+		ProgressFill.Parent = ProgressBack
 
 		tween(card, {Position = UDim2.fromOffset(0, 0), BackgroundTransparency = 0}, 0.3, Enum.EasingStyle.Quint)
 		tween(cStroke, {Transparency = 0}, 0.3)
-		for _, child in ipairs(card:GetDescendants()) do
+		tween(ProgressBack, {BackgroundTransparency = 0}, 0.3)
+		for _, child in ipairs(ContentWrap:GetDescendants()) do
 			if child:IsA("TextLabel") then
 				tween(child, {TextTransparency = 0}, 0.3)
 			end
 		end
 
+		task.delay(0.1, function()
+			if ProgressFill.Parent then
+				tween(ProgressFill, {Size = UDim2.new(0, 0, 1, 0)}, math.max(duration - 0.1, 0.1), Enum.EasingStyle.Linear)
+			end
+		end)
+
 		task.delay(duration, function()
 			tween(card, {Position = UDim2.fromOffset(40, 0), BackgroundTransparency = 1}, 0.25)
 			tween(cStroke, {Transparency = 1}, 0.25)
-			for _, child in ipairs(card:GetDescendants()) do
+			tween(ProgressBack, {BackgroundTransparency = 1}, 0.25)
+			tween(ProgressFill, {BackgroundTransparency = 1}, 0.25)
+			for _, child in ipairs(ContentWrap:GetDescendants()) do
 				if child:IsA("TextLabel") then
 					tween(child, {TextTransparency = 1}, 0.25)
 				end
