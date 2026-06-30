@@ -1148,54 +1148,53 @@ function Library:CreateWindow(config)
 	------------------------------------------------------------
 	tween(Main, {Size = UDim2.fromOffset(winWidth, winHeight), BackgroundTransparency = 0}, 0.45, Enum.EasingStyle.Quint)
 
-	local menuOpen = true
+	-- Agora existe um único estado: "minimizado" ou não. A janela NUNCA
+	-- fica invisível/some da tela — quando "fechada" ela só encolhe até
+	-- sobrar a barrinha do TopBar, que pode ser clicada (ou reaberta
+	-- pela tecla) para expandir de novo.
 	local minimized = false
+	local BAR_HEIGHT = 46
 
-	local function toggleMenu()
-		menuOpen = not menuOpen
-		Main.Visible = true
-		local targetHeight = minimized and 46 or winHeight
-		if menuOpen then
-			Main.Size = UDim2.fromOffset(winWidth, 0)
-			tween(Main, {Size = UDim2.fromOffset(winWidth, targetHeight)}, 0.35, Enum.EasingStyle.Quint)
-		else
-			local closeT = tween(Main, {Size = UDim2.fromOffset(winWidth, 0)}, 0.3, Enum.EasingStyle.Quint)
-			closeT.Completed:Connect(function()
-				if not menuOpen then
-					Main.Visible = false
-				end
-			end)
-		end
-	end
-
-	local function toggleMinimize()
-		if not menuOpen then return end
-		minimized = not minimized
+	local function setMinimized(state)
+		if minimized == state then return end
+		minimized = state
 		if minimized then
-			tween(Main, {Size = UDim2.fromOffset(winWidth, 46)}, 0.3, Enum.EasingStyle.Quint)
+			Sidebar.Visible = false
+			ContentArea.Visible = false
+			tween(Main, {Size = UDim2.fromOffset(winWidth, BAR_HEIGHT)}, 0.3, Enum.EasingStyle.Quint)
 		else
+			Sidebar.Visible = true
+			ContentArea.Visible = true
 			tween(Main, {Size = UDim2.fromOffset(winWidth, winHeight)}, 0.3, Enum.EasingStyle.Quint)
 		end
 	end
 
+	local function toggleMinimized()
+		setMinimized(not minimized)
+	end
+
 	track(UserInputService.InputBegan:Connect(function(input, gpe)
 		if gpe then return end
-		if input.KeyCode == toggleKey then
-			toggleMenu()
-		elseif input.KeyCode == minimizeKey then
-			toggleMinimize()
+		if input.KeyCode == toggleKey or input.KeyCode == minimizeKey then
+			toggleMinimized()
 		end
 	end))
 
-	local dragging, dragInput, dragStart, startPos
+	-- Arrastar pela TopBar. Também detecta clique (sem arrastar) na
+	-- barra para restaurar a janela quando ela estiver minimizada.
+	local dragging, dragInput, dragStart, startPos, dragMoved
 	TopBar.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
+			dragMoved = false
 			dragStart = input.Position
 			startPos = Main.Position
 			input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then
 					dragging = false
+					if not dragMoved and minimized then
+						setMinimized(false)
+					end
 				end
 			end)
 		end
@@ -1208,6 +1207,9 @@ function Library:CreateWindow(config)
 	track(UserInputService.InputChanged:Connect(function(input)
 		if dragging and input == dragInput then
 			local delta = input.Position - dragStart
+			if math.abs(delta.X) > 4 or math.abs(delta.Y) > 4 then
+				dragMoved = true
+			end
 			Main.Position = UDim2.new(
 				startPos.X.Scale, startPos.X.Offset + delta.X,
 				startPos.Y.Scale, startPos.Y.Offset + delta.Y
@@ -1215,8 +1217,9 @@ function Library:CreateWindow(config)
 		end
 	end))
 
+	-- O "X" agora só minimiza para a barrinha, nunca esconde a janela.
 	CloseBtn.MouseButton1Click:Connect(function()
-		toggleMenu()
+		setMinimized(true)
 	end)
 
 	------------------------------------------------------------
@@ -1259,11 +1262,15 @@ function Library:CreateWindow(config)
 	end
 
 	function Window:Toggle()
-		toggleMenu()
+		toggleMinimized()
 	end
 
 	function Window:Minimize()
-		toggleMinimize()
+		setMinimized(true)
+	end
+
+	function Window:Restore()
+		setMinimized(false)
 	end
 
 	function Window:Notify(opts)
