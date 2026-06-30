@@ -947,6 +947,7 @@ function Library:CreateWindow(config)
 	-- CRIAÇÃO DE ABAS
 	------------------------------------------------------------
 	local function createTab(name)
+		print("v1.0.5")
 		local page = Instance.new("ScrollingFrame")
 		page.Name = name
 		page.Size = UDim2.fromScale(1, 1)
