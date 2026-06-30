@@ -45,7 +45,7 @@
     Veja o arquivo Example.lua para um exemplo completo de uso.
     ============================================================
 ]]
-print("v1.0.5 loaded")
+print("v1.0.6")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
@@ -306,8 +306,8 @@ function Library:CreateWindow(config)
 	local theme       = mergeTheme(config.Theme)
 	local title        = config.Title or "Alluminium"
 	local iconId        = config.Icon or "rbxassetid://0"
-	local toggleKey     = config.ToggleKey or Enum.KeyCode.Insert
-	local minimizeKey   = config.MinimizeKey or Enum.KeyCode.CapsLock
+	local toggleKey     = config.ToggleKey or Enum.KeyCode.RightShift
+	local minimizeKey   = config.MinimizeKey or Enum.KeyCode.RightControl
 	local sidebarWidth  = config.SidebarWidth or 140
 	local winWidth      = (config.Size and config.Size.X) or 560
 	local winHeight     = (config.Size and config.Size.Y) or 360
@@ -364,6 +364,269 @@ function Library:CreateWindow(config)
 		end
 	end)
 
+	------------------------------------------------------------
+	-- HOTKEY LIST
+	-- Painel flutuante (fora da janela principal) que lista, com
+	-- animação, todas as teclas registradas pelos componentes de
+	-- Keybind / KeybindToggle. Pode ser escondido/mostrado com a
+	-- tecla HotkeyListKey (RightAlt por padrão).
+	------------------------------------------------------------
+	local hotkeyListKey = config.HotkeyListKey or Enum.KeyCode.RightAlt
+	local hotkeyListEnabled = config.HotkeyListEnabled
+	if hotkeyListEnabled == nil then hotkeyListEnabled = true end
+	local hotkeyListCorner = config.HotkeyListPosition or "BottomLeft" -- BottomLeft, BottomRight, TopLeft, TopRight
+
+	local hotkeyAnchor = Vector2.new(0, 1)
+	local hotkeyPos = UDim2.new(0, 16, 1, -16)
+	local hotkeyAlign = Enum.HorizontalAlignment.Left
+	local hotkeyFromRight = false
+	if hotkeyListCorner == "BottomRight" then
+		hotkeyAnchor, hotkeyPos, hotkeyAlign, hotkeyFromRight = Vector2.new(1, 1), UDim2.new(1, -16, 1, -16), Enum.HorizontalAlignment.Right, true
+	elseif hotkeyListCorner == "TopLeft" then
+		hotkeyAnchor, hotkeyPos, hotkeyAlign = Vector2.new(0, 0), UDim2.new(0, 16, 0, 16), Enum.HorizontalAlignment.Left
+	elseif hotkeyListCorner == "TopRight" then
+		hotkeyAnchor, hotkeyPos, hotkeyAlign, hotkeyFromRight = Vector2.new(1, 0), UDim2.new(1, -16, 0, 16), Enum.HorizontalAlignment.Right, true
+	end
+
+	local HotkeyListGui = Instance.new("CanvasGroup")
+	HotkeyListGui.Name = "HotkeyList"
+	HotkeyListGui.BackgroundTransparency = 1
+	HotkeyListGui.GroupTransparency = 0
+	HotkeyListGui.AnchorPoint = hotkeyAnchor
+	HotkeyListGui.Position = hotkeyPos
+	HotkeyListGui.Size = UDim2.fromOffset(220, 0)
+	HotkeyListGui.AutomaticSize = Enum.AutomaticSize.Y
+	HotkeyListGui.Visible = hotkeyListEnabled
+	HotkeyListGui.ZIndex = 30
+	HotkeyListGui.Parent = ScreenGui
+
+	local hotkeyListLayout = Instance.new("UIListLayout")
+	hotkeyListLayout.Padding = UDim.new(0, 6)
+	hotkeyListLayout.HorizontalAlignment = hotkeyAlign
+	hotkeyListLayout.VerticalAlignment = string.match(hotkeyListCorner, "^Bottom") and Enum.VerticalAlignment.Bottom or Enum.VerticalAlignment.Top
+	hotkeyListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	hotkeyListLayout.Parent = HotkeyListGui
+
+	local HotkeyList = {}
+	local hotkeyEntryCount = 0
+
+	function HotkeyList:AddEntry(name, keyText, modeText)
+		hotkeyEntryCount = hotkeyEntryCount + 1
+		local row = Instance.new("Frame")
+		row.AutomaticSize = Enum.AutomaticSize.X
+		row.Size = UDim2.fromOffset(0, 26)
+		row.BackgroundColor3 = theme.Surface
+		row.LayoutOrder = hotkeyEntryCount
+		row.ZIndex = 30
+		row.Parent = HotkeyListGui
+		corner(row, 6)
+		stroke(row, theme.Stroke, 1)
+
+		local pad = Instance.new("UIPadding")
+		pad.PaddingLeft = UDim.new(0, 10)
+		pad.PaddingRight = UDim.new(0, 10)
+		pad.Parent = row
+
+		local rowList = Instance.new("UIListLayout")
+		rowList.FillDirection = Enum.FillDirection.Horizontal
+		rowList.VerticalAlignment = Enum.VerticalAlignment.Center
+		rowList.Padding = UDim.new(0, 6)
+		rowList.Parent = row
+
+		local modeLabel = Instance.new("TextLabel")
+		modeLabel.AutomaticSize = Enum.AutomaticSize.X
+		modeLabel.Size = UDim2.fromOffset(0, 26)
+		modeLabel.BackgroundTransparency = 1
+		modeLabel.Font = Enum.Font.GothamBold
+		modeLabel.Text = modeText and string.upper(modeText) or ""
+		modeLabel.TextColor3 = theme.TextSecondary
+		modeLabel.TextSize = 10
+		modeLabel.ZIndex = 30
+		modeLabel.Parent = row
+
+		local nameLabel = Instance.new("TextLabel")
+		nameLabel.AutomaticSize = Enum.AutomaticSize.X
+		nameLabel.Size = UDim2.fromOffset(0, 26)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.Font = Enum.Font.Gotham
+		nameLabel.Text = name
+		nameLabel.TextColor3 = theme.TextSecondary
+		nameLabel.TextSize = 12
+		nameLabel.ZIndex = 30
+		nameLabel.Parent = row
+
+		local keyLabel = Instance.new("TextLabel")
+		keyLabel.AutomaticSize = Enum.AutomaticSize.X
+		keyLabel.Size = UDim2.fromOffset(0, 26)
+		keyLabel.BackgroundTransparency = 1
+		keyLabel.Font = Enum.Font.GothamBold
+		keyLabel.Text = "[" .. (keyText or "?") .. "]"
+		keyLabel.TextColor3 = theme.TextPrimary
+		keyLabel.TextSize = 12
+		keyLabel.ZIndex = 30
+		keyLabel.Parent = row
+
+		-- animação de entrada: desliza + aparece
+		local slideFrom = hotkeyFromRight and 30 or -30
+		row.Position = UDim2.fromOffset(slideFrom, 0)
+		row.BackgroundTransparency = 1
+		tween(row, {BackgroundTransparency = 0, Position = UDim2.fromOffset(0, 0)}, 0.3, Enum.EasingStyle.Quint)
+
+		local entry = {}
+
+		function entry:SetKey(text)
+			keyLabel.Text = "[" .. text .. "]"
+			tween(keyLabel, {TextColor3 = theme.Accent}, 0.1)
+			task.delay(0.2, function()
+				tween(keyLabel, {TextColor3 = theme.TextPrimary}, 0.3)
+			end)
+		end
+
+		function entry:SetMode(text)
+			modeLabel.Text = text and string.upper(text) or ""
+		end
+
+		function entry:Destroy()
+			local slideTo = hotkeyFromRight and 30 or -30
+			local outT = tween(row, {BackgroundTransparency = 1, Position = UDim2.fromOffset(slideTo, 0)}, 0.2)
+			outT.Completed:Connect(function()
+				row:Destroy()
+			end)
+		end
+
+		return entry
+	end
+
+	local hotkeyListVisible = hotkeyListEnabled
+	local function setHotkeyListVisible(state)
+		hotkeyListVisible = state
+		HotkeyListGui.Visible = true
+		if state then
+			tween(HotkeyListGui, {GroupTransparency = 0, Position = hotkeyPos}, 0.25, Enum.EasingStyle.Quint)
+		else
+			local offset = hotkeyFromRight and 40 or -40
+			local slidePos = UDim2.new(hotkeyPos.X.Scale, hotkeyPos.X.Offset + offset, hotkeyPos.Y.Scale, hotkeyPos.Y.Offset)
+			local t = tween(HotkeyListGui, {GroupTransparency = 1, Position = slidePos}, 0.25, Enum.EasingStyle.Quint)
+			t.Completed:Connect(function()
+				if not hotkeyListVisible then
+					HotkeyListGui.Visible = false
+				end
+			end)
+		end
+	end
+
+	track(UserInputService.InputBegan:Connect(function(input, gpe)
+		if gpe then return end
+		if input.KeyCode == hotkeyListKey then
+			setHotkeyListVisible(not hotkeyListVisible)
+		end
+	end))
+
+	------------------------------------------------------------
+	-- MENU DE CONTEXTO (clique direito) — usado pelo KeybindToggle
+	-- para escolher o modo: Always, Hold, Toggle.
+	------------------------------------------------------------
+	local activeContextMenu = nil
+
+	local function closeContextMenu()
+		if activeContextMenu then
+			local menu = activeContextMenu
+			activeContextMenu = nil
+			local t = tween(menu, {BackgroundTransparency = 1}, 0.12)
+			for _, c in ipairs(menu:GetDescendants()) do
+				if c:IsA("TextButton") or c:IsA("TextLabel") then
+					tween(c, {TextTransparency = 1}, 0.12)
+				end
+			end
+			t.Completed:Connect(function()
+				menu:Destroy()
+			end)
+		end
+	end
+
+	local function openModeMenu(anchorButton, currentMode, onSelect)
+		closeContextMenu()
+
+		local menu = Instance.new("Frame")
+		menu.Name = "ModeMenu"
+		menu.Size = UDim2.fromOffset(110, 0)
+		menu.AutomaticSize = Enum.AutomaticSize.Y
+		menu.BackgroundColor3 = theme.SurfaceLight
+		menu.BackgroundTransparency = 1
+		menu.ZIndex = 40
+		menu.Parent = ScreenGui
+		corner(menu, 8)
+		stroke(menu, theme.Stroke, 1)
+
+		local absPos = anchorButton.AbsolutePosition
+		local absSize = anchorButton.AbsoluteSize
+		menu.Position = UDim2.fromOffset(absPos.X - 54, absPos.Y + absSize.Y + 4)
+
+		local pad = Instance.new("UIPadding")
+		pad.PaddingTop = UDim.new(0, 4)
+		pad.PaddingBottom = UDim.new(0, 4)
+		pad.PaddingLeft = UDim.new(0, 4)
+		pad.PaddingRight = UDim.new(0, 4)
+		pad.Parent = menu
+
+		local list = Instance.new("UIListLayout")
+		list.Padding = UDim.new(0, 2)
+		list.Parent = menu
+
+		for _, optName in ipairs({"Always", "Hold", "Toggle"}) do
+			local isCurrent = optName == currentMode
+			local optBtn = Instance.new("TextButton")
+			optBtn.Size = UDim2.new(1, 0, 0, 28)
+			optBtn.BackgroundColor3 = theme.Surface
+			optBtn.BackgroundTransparency = isCurrent and 0 or 1
+			optBtn.AutoButtonColor = false
+			optBtn.Font = isCurrent and Enum.Font.GothamBold or Enum.Font.Gotham
+			optBtn.Text = optName
+			optBtn.TextColor3 = isCurrent and theme.TextPrimary or theme.TextSecondary
+			optBtn.TextSize = 12
+			optBtn.ZIndex = 41
+			optBtn.Parent = menu
+			corner(optBtn, 6)
+
+			optBtn.MouseEnter:Connect(function()
+				tween(optBtn, {BackgroundColor3 = theme.SurfaceLight, BackgroundTransparency = 0}, 0.12)
+			end)
+			optBtn.MouseLeave:Connect(function()
+				if optName == currentMode then
+					tween(optBtn, {BackgroundColor3 = theme.Surface}, 0.12)
+				else
+					tween(optBtn, {BackgroundTransparency = 1}, 0.12)
+				end
+			end)
+			optBtn.MouseButton1Click:Connect(function()
+				onSelect(optName)
+				closeContextMenu()
+			end)
+		end
+
+		activeContextMenu = menu
+		tween(menu, {BackgroundTransparency = 0}, 0.15)
+
+		task.defer(function()
+			local conn
+			conn = track(UserInputService.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					if not menu.Parent then
+						if conn then conn:Disconnect() end
+						return
+					end
+					local mousePos = UserInputService:GetMouseLocation()
+					local menuPos = menu.AbsolutePosition
+					local menuSize = menu.AbsoluteSize
+					if mousePos.X < menuPos.X or mousePos.X > menuPos.X + menuSize.X or mousePos.Y < menuPos.Y or mousePos.Y > menuPos.Y + menuSize.Y then
+						closeContextMenu()
+						if conn then conn:Disconnect() end
+					end
+				end
+			end))
+		end)
+	end
+
 	local TopBar = Instance.new("Frame")
 	TopBar.Name = "TopBar"
 	TopBar.Size = UDim2.new(1, 0, 0, 46)
@@ -408,7 +671,7 @@ function Library:CreateWindow(config)
 	UnloadBtn.Size = UDim2.fromOffset(28, 28)
 	UnloadBtn.Position = UDim2.new(1, -72, 0.5, -14)
 	UnloadBtn.BackgroundColor3 = theme.SurfaceLight
-	UnloadBtn.Text = "X"
+	UnloadBtn.Text = "⏻"
 	UnloadBtn.Font = Enum.Font.GothamBold
 	UnloadBtn.TextSize = 14
 	UnloadBtn.TextColor3 = theme.TextSecondary
@@ -433,7 +696,7 @@ function Library:CreateWindow(config)
 	CloseBtn.Size = UDim2.fromOffset(28, 28)
 	CloseBtn.Position = UDim2.new(1, -38, 0.5, -14)
 	CloseBtn.BackgroundColor3 = theme.SurfaceLight
-	CloseBtn.Text = "-"
+	CloseBtn.Text = "×"
 	CloseBtn.Font = Enum.Font.GothamBold
 	CloseBtn.TextSize = 18
 	CloseBtn.TextColor3 = theme.TextSecondary
@@ -878,7 +1141,9 @@ function Library:CreateWindow(config)
 		return holder
 	end
 
-	local function createKeybind(parent, text, default, callback)
+	local function createKeybind(parent, text, default, callback, showInHotkeyList)
+		if showInHotkeyList == nil then showInHotkeyList = true end
+
 		local holder = Instance.new("Frame")
 		holder.Size = UDim2.new(1, 0, 0, 38)
 		holder.BackgroundColor3 = theme.Surface
@@ -912,6 +1177,11 @@ function Library:CreateWindow(config)
 		local listening = false
 		local currentKey = default
 
+		local hotkeyEntry = nil
+		if showInHotkeyList then
+			hotkeyEntry = HotkeyList:AddEntry(text, currentKey.Name, "Press")
+		end
+
 		keyBtn.MouseButton1Click:Connect(function()
 			if listening then return end
 			listening = true
@@ -935,6 +1205,7 @@ function Library:CreateWindow(config)
 
 			currentKey = input.KeyCode
 			keyBtn.Text = currentKey.Name
+			if hotkeyEntry then hotkeyEntry:SetKey(currentKey.Name) end
 			if callback then
 				callback(currentKey)
 			end
@@ -943,11 +1214,191 @@ function Library:CreateWindow(config)
 		return holder
 	end
 
+	-- KEYBIND TOGGLE: combina um switch (toggle) com uma tecla vinculada.
+	-- Clique direito no botão da tecla abre um menu pra escolher o modo:
+	--   Always  -> ignora a tecla, fica sempre ligado
+	--   Hold    -> fica ligado só enquanto a tecla está pressionada
+	--   Toggle  -> cada aperto da tecla alterna ligado/desligado
+	-- (clicar no próprio switch também alterna, exceto em Hold/Always)
+	local function createKeybindToggle(parent, opts)
+		opts = opts or {}
+		local text = opts.Text or "Keybind"
+		local defaultKey = opts.Default or Enum.KeyCode.E
+		local mode = opts.Mode or "Toggle"
+		local defaultState = opts.DefaultState
+		if defaultState == nil then defaultState = false end
+		local callback = opts.Callback
+		local modeCallback = opts.ModeCallback
+		local showInHotkeyList = opts.ShowInHotkeyList
+		if showInHotkeyList == nil then showInHotkeyList = true end
+
+		local holder = Instance.new("Frame")
+		holder.Size = UDim2.new(1, 0, 0, 38)
+		holder.BackgroundColor3 = theme.Surface
+		holder.Parent = parent
+		corner(holder, 8)
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, -158, 1, 0)
+		label.Position = UDim2.fromOffset(14, 0)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.Gotham
+		label.Text = text
+		label.TextColor3 = theme.TextPrimary
+		label.TextSize = 13
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.Parent = holder
+
+		local modeTag = Instance.new("TextLabel")
+		modeTag.Size = UDim2.fromOffset(44, 18)
+		modeTag.AnchorPoint = Vector2.new(1, 0.5)
+		modeTag.Position = UDim2.new(1, -120, 0.5, 0)
+		modeTag.BackgroundColor3 = theme.SurfaceLight
+		modeTag.Font = Enum.Font.GothamBold
+		modeTag.Text = string.upper(mode)
+		modeTag.TextColor3 = theme.TextSecondary
+		modeTag.TextSize = 9
+		modeTag.Parent = holder
+		corner(modeTag, 5)
+
+		local keyBtn = Instance.new("TextButton")
+		keyBtn.Size = UDim2.fromOffset(56, 24)
+		keyBtn.AnchorPoint = Vector2.new(1, 0.5)
+		keyBtn.Position = UDim2.new(1, -60, 0.5, 0)
+		keyBtn.BackgroundColor3 = theme.SurfaceLight
+		keyBtn.AutoButtonColor = false
+		keyBtn.Font = Enum.Font.GothamBold
+		keyBtn.Text = defaultKey.Name
+		keyBtn.TextColor3 = theme.TextSecondary
+		keyBtn.TextSize = 12
+		keyBtn.Parent = holder
+		corner(keyBtn, 6)
+
+		local switchBack = Instance.new("Frame")
+		switchBack.Size = UDim2.fromOffset(40, 20)
+		switchBack.AnchorPoint = Vector2.new(1, 0.5)
+		switchBack.Position = UDim2.new(1, -14, 0.5, 0)
+		switchBack.BackgroundColor3 = defaultState and theme.Toggle_On or theme.Toggle_Off
+		switchBack.Parent = holder
+		corner(switchBack, 10)
+
+		local knob = Instance.new("Frame")
+		knob.Size = UDim2.fromOffset(16, 16)
+		knob.AnchorPoint = Vector2.new(0, 0.5)
+		knob.Position = defaultState and UDim2.new(1, -18, 0.5, 0) or UDim2.new(0, 2, 0.5, 0)
+		knob.BackgroundColor3 = defaultState and Color3.fromRGB(20, 20, 20) or Color3.fromRGB(230, 230, 230)
+		knob.Parent = switchBack
+		corner(knob, 8)
+
+		local switchClick = Instance.new("TextButton")
+		switchClick.Size = UDim2.fromScale(1, 1)
+		switchClick.BackgroundTransparency = 1
+		switchClick.Text = ""
+		switchClick.Parent = switchBack
+
+		local state = defaultState
+		local currentKey = defaultKey
+		local currentMode = mode
+		local listening = false
+
+		local hotkeyEntry = nil
+		if showInHotkeyList then
+			hotkeyEntry = HotkeyList:AddEntry(text, currentKey.Name, currentMode)
+		end
+
+		local function applyVisual(newState)
+			state = newState
+			if state then
+				tween(switchBack, {BackgroundColor3 = theme.Toggle_On}, 0.18)
+				tween(knob, {Position = UDim2.new(1, -18, 0.5, 0), BackgroundColor3 = Color3.fromRGB(20, 20, 20)}, 0.18)
+			else
+				tween(switchBack, {BackgroundColor3 = theme.Toggle_Off}, 0.18)
+				tween(knob, {Position = UDim2.new(0, 2, 0.5, 0), BackgroundColor3 = Color3.fromRGB(230, 230, 230)}, 0.18)
+			end
+		end
+
+		local function setState(newState, fire)
+			if state == newState then return end
+			applyVisual(newState)
+			if fire ~= false and callback then
+				task.spawn(callback, newState)
+			end
+		end
+
+		local function applyMode(newMode)
+			currentMode = newMode
+			modeTag.Text = string.upper(newMode)
+			if hotkeyEntry then hotkeyEntry:SetMode(newMode) end
+			if modeCallback then task.spawn(modeCallback, newMode) end
+			if newMode == "Always" then
+				setState(true)
+			end
+		end
+
+		switchClick.MouseButton1Click:Connect(function()
+			if currentMode == "Always" or currentMode == "Hold" then return end
+			setState(not state)
+		end)
+
+		keyBtn.MouseButton1Click:Connect(function()
+			if listening then return end
+			listening = true
+			keyBtn.Text = "..."
+			tween(keyBtn, {BackgroundColor3 = theme.Toggle_On}, 0.15)
+			tween(keyBtn, {TextColor3 = Color3.fromRGB(20, 20, 20)}, 0.15)
+		end)
+
+		keyBtn.MouseButton2Click:Connect(function()
+			openModeMenu(keyBtn, currentMode, function(selected)
+				applyMode(selected)
+			end)
+		end)
+
+		track(UserInputService.InputBegan:Connect(function(input, gpe)
+			if listening then
+				if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+				listening = false
+				tween(keyBtn, {BackgroundColor3 = theme.SurfaceLight}, 0.15)
+				tween(keyBtn, {TextColor3 = theme.TextSecondary}, 0.15)
+
+				if input.KeyCode == Enum.KeyCode.Escape then
+					keyBtn.Text = currentKey.Name
+					return
+				end
+
+				currentKey = input.KeyCode
+				keyBtn.Text = currentKey.Name
+				if hotkeyEntry then hotkeyEntry:SetKey(currentKey.Name) end
+				return
+			end
+
+			if gpe then return end
+			if currentMode == "Always" then return end
+			if input.KeyCode == currentKey then
+				if currentMode == "Toggle" then
+					setState(not state)
+				elseif currentMode == "Hold" then
+					setState(true)
+				end
+			end
+		end))
+
+		track(UserInputService.InputEnded:Connect(function(input)
+			if currentMode ~= "Hold" then return end
+			if input.KeyCode == currentKey then
+				setState(false)
+			end
+		end))
+
+		applyMode(currentMode)
+
+		return holder
+	end
+
 	------------------------------------------------------------
 	-- CRIAÇÃO DE ABAS
 	------------------------------------------------------------
 	local function createTab(name)
-		print("v1.0.5")
 		local page = Instance.new("ScrollingFrame")
 		page.Name = name
 		page.Size = UDim2.fromScale(1, 1)
@@ -1047,7 +1498,14 @@ function Library:CreateWindow(config)
 
 		function Tab:CreateKeybind(opts)
 			opts = opts or {}
-			return createKeybind(page, opts.Text or "Atalho", opts.Default or Enum.KeyCode.E, opts.Callback)
+			local show = opts.ShowInHotkeyList
+			if show == nil then show = true end
+			return createKeybind(page, opts.Text or "Atalho", opts.Default or Enum.KeyCode.E, opts.Callback, show)
+		end
+
+		function Tab:CreateKeybindToggle(opts)
+			opts = opts or {}
+			return createKeybindToggle(page, opts)
 		end
 
 		return Tab
@@ -1246,6 +1704,18 @@ function Library:CreateWindow(config)
 
 	function Window:SetMinimizeKey(key)
 		minimizeKey = key
+	end
+
+	function Window:ShowHotkeyList()
+		setHotkeyListVisible(true)
+	end
+
+	function Window:HideHotkeyList()
+		setHotkeyListVisible(false)
+	end
+
+	function Window:ToggleHotkeyList()
+		setHotkeyListVisible(not hotkeyListVisible)
 	end
 
 	function Window:SetAccentColor(color)
