@@ -306,8 +306,8 @@ function Library:CreateWindow(config)
 	local theme       = mergeTheme(config.Theme)
 	local title        = config.Title or "Alluminium"
 	local iconId        = config.Icon or "rbxassetid://0"
-	local toggleKey     = config.ToggleKey or Enum.KeyCode.RightShift
-	local minimizeKey   = config.MinimizeKey or Enum.KeyCode.RightControl
+	local toggleKey     = config.ToggleKey or Enum.KeyCode.Insert
+	local minimizeKey   = config.MinimizeKey or Enum.KeyCode.CapsLock
 	local sidebarWidth  = config.SidebarWidth or 140
 	local winWidth      = (config.Size and config.Size.X) or 560
 	local winHeight     = (config.Size and config.Size.Y) or 360
@@ -408,7 +408,7 @@ function Library:CreateWindow(config)
 	UnloadBtn.Size = UDim2.fromOffset(28, 28)
 	UnloadBtn.Position = UDim2.new(1, -72, 0.5, -14)
 	UnloadBtn.BackgroundColor3 = theme.SurfaceLight
-	UnloadBtn.Text = "⏻"
+	UnloadBtn.Text = "X"
 	UnloadBtn.Font = Enum.Font.GothamBold
 	UnloadBtn.TextSize = 14
 	UnloadBtn.TextColor3 = theme.TextSecondary
@@ -433,7 +433,7 @@ function Library:CreateWindow(config)
 	CloseBtn.Size = UDim2.fromOffset(28, 28)
 	CloseBtn.Position = UDim2.new(1, -38, 0.5, -14)
 	CloseBtn.BackgroundColor3 = theme.SurfaceLight
-	CloseBtn.Text = "×"
+	CloseBtn.Text = "-"
 	CloseBtn.Font = Enum.Font.GothamBold
 	CloseBtn.TextSize = 18
 	CloseBtn.TextColor3 = theme.TextSecondary
